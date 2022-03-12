@@ -1,15 +1,16 @@
 from __future__ import print_function
 
+import traceback
 from enum import Enum
 from re import X
 import tensorflow as tf
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-# class extension for Path
+
 Path.ls = lambda x: list(x.iterdir())
-Path.lf = lambda pth, pat='*': list(pth.glob(pat))    # allow ls with wildchar match
-Path.rlf = lambda pth, pat='*': list(pth.rglob(pat))  # allow recursive ls with wildchar match
+Path.lf = lambda pth, pat='*': list(pth.glob(pat))
+Path.rlf = lambda pth, pat='*': list(pth.rglob(pat))
 
 
 # recommended helpers from tensorflow doc
@@ -50,6 +51,7 @@ class TFRecordHelper:
     FLOAT_ARRAY = 5
     STRING_ARRAY = 6
     VAR_STRING_ARRAY = 7
+    VAR_FLOAT_ARRAY = 8
 
   @staticmethod
   def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords'):
@@ -63,6 +65,7 @@ class TFRecordHelper:
     dataset: a tf.data.Dataset that has dict as a single sample 
 
     """
+    # print(f'{feature_constructor is not None}')
     
     bad_items = []
     with tf.io.TFRecordWriter(output_filename) as writer:
@@ -73,24 +76,35 @@ class TFRecordHelper:
           for k, v in feature_desc.items():
             if isinstance(v, tuple):
               t, n = v
-              assert n == len(feature_constructor[k](x)), f'array is not of length {n}'
-              if t == __class__.DataType.INT_ARRAY:
+              assert n == len(feature_constructor[k](x)) if feature_constructor is not None else len(x[k]), f'array is not of length {n}'
+              if t.value == __class__.DataType.INT_ARRAY.value:
                 feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
-              elif t == __class__.DataType.FLOAT_ARRAY:
+              elif t.value == __class__.DataType.FLOAT_ARRAY.value:
                 feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+              elif t.value == __class__.DataType.STRING_ARRAY.value:
+                feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
               else:
+                print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
                 pass
 
             else:
-              if v == __class__.DataType.STRING:
+              if v.value == __class__.DataType.STRING.value:
                 feature[k] = _bytes_feature(feature_constructor[k](x)) if feature_constructor is not None else _bytes_feature(x[k])
-              elif v == __class__.DataType.INT:
+
+              elif v.value == __class__.DataType.INT.value:
                 feature[k] = _int64_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64_feature(x[k])
-              elif v == __class__.DataType.FLOAT:              
+
+              elif v.value == __class__.DataType.FLOAT.value:              
                 feature[k] = _float_feature(feature_constructor[k](x)) if feature_constructor is not None else _float_feature(x[k])
-              elif v == __class__.DataType.VAR_STRING_ARRAY:
+
+              elif v.value == __class__.DataType.VAR_STRING_ARRAY.value:
                 feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
+
+              elif v.value == __class__.DataType.VAR_FLOAT_ARRAY.value:
+                feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+
               else:
+                print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
                 pass
     
           tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
@@ -102,6 +116,7 @@ class TFRecordHelper:
 
         except Exception as e:
           print(e)  
+          print(traceback.format_exc())
           bad_items.append(x)
 
     return bad_items
@@ -117,7 +132,10 @@ class TFRecordHelper:
           feature_tf_io_desc[k] = tf.io.FixedLenFeature([n], tf.int64)
         elif t == __class__.DataType.FLOAT_ARRAY:
           feature_tf_io_desc[k] = tf.io.FixedLenFeature([n], tf.float32)
+        elif t == __class__.DataType.STRING_ARRAY:
+          feature_tf_io_desc[k] = tf.io.FixedLenFeature([n], tf.string)
         else:
+          print(f"Serious Warning: failed to read data for {k} and {v}. Please debug.")
           pass
       else:
         if v == __class__.DataType.STRING:
@@ -128,7 +146,10 @@ class TFRecordHelper:
           feature_tf_io_desc[k] = tf.io.FixedLenFeature([], tf.float32)
         elif v == __class__.DataType.VAR_STRING_ARRAY:
           feature_tf_io_desc[k] = tf.io.VarLenFeature(tf.string)
+        elif v == __class__.DataType.VAR_FLOAT_ARRAY:
+          feature_tf_io_desc[k] = tf.io.VarLenFeature(tf.float32)
         else:
+          print(f"Serious Warning: failed to read data for {k} and {v}. Please debug.")
           pass
 
     def parse_feature_function(example_proto):
@@ -140,18 +161,23 @@ class TFRecordHelper:
   def shuffle(*, feature_desc, feature_constructor, dataset, seed=None, output_filename='test.tfrecords'):
 
     len_dataset = len([x for x in dataset])
-    bad_items = TFRecordHelper.create(feature_desc, 
-                                      feature_constructor, 
-                                      dataset.shuffle(len_dataset, seed=seed), 
+    bad_items = TFRecordHelper.create(feature_desc = feature_desc, 
+                                      feature_constructor = feature_constructor, 
+                                      dataset = dataset.shuffle(len_dataset, seed=seed), 
                                       output_filename=output_filename
                                  )
 
   @staticmethod
-  def element_spec(ds):
+  def element_spec(ds, return_keys_only=False):
     for raw_record in ds.take(1):
       example = tf.train.Example()
       example.ParseFromString(raw_record.numpy())
-      return example
+      
+      if return_keys_only:
+        feature_keys = list(example.features.feature.keys())
+        return feature_keys
+
+      return example 
 
 
 class TFRecordHelperWriter(object):
@@ -178,8 +204,8 @@ if __name__ == "__main__":
   #TODO: show example of how to use
 
   file_ds = tf.data.Dataset.from_tensor_slices(
-    {'filename': ['abc.jpg', '123.jpg'],
-     'filepath': ["/content/abc.jpg", "/content/123.jpg"]
+    {'filename': ['9_Ropewalk_Lane_Dartmouth_NS.jpg', '31_Saddlebrook_Way_NE_Calgary_AB.jpg'],
+     'filepath': ["/content/9_Ropewalk_Lane_Dartmouth_NS.jpg", "/content/31_Saddlebrook_Way_NE_Calgary_AB.jpg"]
     }
   )
 
