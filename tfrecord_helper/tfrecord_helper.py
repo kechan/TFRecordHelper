@@ -52,6 +52,7 @@ class TFRecordHelper:
     STRING_ARRAY = 6
     VAR_STRING_ARRAY = 7
     VAR_FLOAT_ARRAY = 8
+    VAR_INT_ARRAY = 9
 
   @staticmethod
   def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords'):
@@ -101,7 +102,10 @@ class TFRecordHelper:
                 feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
 
               elif v.value == __class__.DataType.VAR_FLOAT_ARRAY.value:
-                feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+                feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+
+              elif v.value == __class__.DataType.VAR_INT_ARRAY.value:
+                feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
 
               else:
                 print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
@@ -148,6 +152,8 @@ class TFRecordHelper:
           feature_tf_io_desc[k] = tf.io.VarLenFeature(tf.string)
         elif v == __class__.DataType.VAR_FLOAT_ARRAY:
           feature_tf_io_desc[k] = tf.io.VarLenFeature(tf.float32)
+        elif v == __class__.DataType.VAR_INT_ARRAY:
+          feature_tf_io_desc[k] = tf.io.VarLenFeature(tf.int64)
         else:
           print(f"Serious Warning: failed to read data for {k} and {v}. Please debug.")
           pass
@@ -178,6 +184,12 @@ class TFRecordHelper:
         return feature_keys
 
       return example 
+
+  @staticmethod
+  def count(ds):
+    for k, _ in enumerate(ds):
+      pass
+    return k + 1
 
 
 class TFRecordHelperWriter(object):
