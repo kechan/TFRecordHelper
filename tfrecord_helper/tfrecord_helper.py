@@ -5,6 +5,7 @@ from enum import Enum
 from re import X
 import tensorflow as tf
 from pathlib import Path
+from tqdm import tqdm
 from typing import Any, Callable, Dict, Optional
 
 
@@ -70,7 +71,7 @@ class TFRecordHelper:
     
     bad_items = []
     with tf.io.TFRecordWriter(output_filename) as writer:
-      for i, x in enumerate(dataset):
+      for i, x in tqdm(enumerate(dataset)):
 
         try:
           feature = {}
@@ -114,9 +115,9 @@ class TFRecordHelper:
           tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
           writer.write(tf_example.SerializeToString())
 
-          if i % 100 == 0: print(".", end='')
-          if i % 1000 == 0: print(i, end='')
-          if i % 10000 == 0: print("")
+          # if i % 100 == 0: print(".", end='')
+          # if i % 1000 == 0: print(i, end='')
+          # if i % 10000 == 0: print("")
 
         except Exception as e:
           print(e)  
