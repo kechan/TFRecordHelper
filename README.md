@@ -27,17 +27,17 @@ file_ds = tf.data.Dataset.from_tensor_slices(
     {'filename': ['9_Ropewalk_Lane_Dartmouth_NS.jpg', '31_Saddlebrook_Way_NE_Calgary_AB.jpg'],
      'filepath': ["/content/9_Ropewalk_Lane_Dartmouth_NS.jpg", "/content/31_Saddlebrook_Way_NE_Calgary_AB.jpg"]
     }
-  )
+)
 
 data_ds = file_ds.map(lambda x: {'filename': x['filename'], 'image_raw': tf.io.read_file(x['filepath'])})
 
 features = {
-'filename': TFRecordHelper.DataType.STRING,
-'image_raw': TFRecordHelper.DataType.STRING,   # bytes for the encoded jpeg, png, etc.
+  'filename': TFRecordHelper.DataType.STRING,
+  'image_raw': TFRecordHelper.DataType.STRING,   # bytes for the encoded jpeg, png, etc.
 }  
 
 with TFRecordHelperWriter('my_test.tfrecords', features = features) as f:
-f.write(data_ds)
+  f.write(data_ds)
 
 
 # read the image back from data_ds (sanity check)
@@ -49,6 +49,6 @@ img_ds = tf.data.TFRecordDataset('my_test.tfrecords')\
 
 
 for img in img_ds:
-plt.imshow(img); plt.grid()
-break
+  plt.imshow(img); plt.grid()
+  break
 ```
