@@ -24,8 +24,8 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 file_ds = tf.data.Dataset.from_tensor_slices(
-    {'filename': ['9_Ropewalk_Lane_Dartmouth_NS.jpg', '31_Saddlebrook_Way_NE_Calgary_AB.jpg'],
-     'filepath': ["/content/9_Ropewalk_Lane_Dartmouth_NS.jpg", "/content/31_Saddlebrook_Way_NE_Calgary_AB.jpg"]
+    {'filename': ['dog_1', 'dog_1', 'cat_1'],
+     'filepath': ["sample_data/dog_1.jpeg", "sample_data/dog_2.jpeg", "sample_data/cat_1.jpeg"]
     }
 )
 
