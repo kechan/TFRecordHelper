@@ -56,7 +56,7 @@ class TFRecordHelper:
     VAR_INT_ARRAY = 9
 
   @staticmethod
-  def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords'):
+  def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords', shard_size: int = None):
     """
     Create a tfrecord from a tf.data.Dataset that is a dict as item.
 
@@ -65,65 +65,74 @@ class TFRecordHelper:
     feature_desc: a dict specifying the "schema" of the tfrecord
     feature_constructor: a dict of key and function to construct that value
     dataset: a tf.data.Dataset that has dict as a single sample 
+    output_filename: the output filename
+    shard_size: the size of each shard. If None, then no sharding is done.
 
     """
     # print(f'{feature_constructor is not None}')
     
     bad_items = []
-    with tf.io.TFRecordWriter(output_filename) as writer:
-      for i, x in tqdm(enumerate(dataset)):
+    # with tf.io.TFRecordWriter(output_filename) as writer:
 
-        try:
-          feature = {}
-          for k, v in feature_desc.items():
-            if isinstance(v, tuple):
-              t, n = v
-              assert n == len(feature_constructor[k](x)) if feature_constructor is not None else len(x[k]), f'array is not of length {n}'
-              if t.value == __class__.DataType.INT_ARRAY.value:
-                feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
-              elif t.value == __class__.DataType.FLOAT_ARRAY.value:
-                feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
-              elif t.value == __class__.DataType.STRING_ARRAY.value:
-                feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
-              else:
-                print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
-                pass
+    writer = tf.io.TFRecordWriter(output_filename)
+    for i, x in tqdm(enumerate(dataset)):
+
+      try:
+        feature = {}
+        for k, v in feature_desc.items():
+          if isinstance(v, tuple):
+            t, n = v
+            assert n == len(feature_constructor[k](x)) if feature_constructor is not None else len(x[k]), f'array is not of length {n}'
+            if t.value == __class__.DataType.INT_ARRAY.value:
+              feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
+            elif t.value == __class__.DataType.FLOAT_ARRAY.value:
+              feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+            elif t.value == __class__.DataType.STRING_ARRAY.value:
+              feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
+            else:
+              print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
+              pass
+
+          else:
+            if v.value == __class__.DataType.STRING.value:
+              feature[k] = _bytes_feature(feature_constructor[k](x)) if feature_constructor is not None else _bytes_feature(x[k])
+
+            elif v.value == __class__.DataType.INT.value:
+              feature[k] = _int64_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64_feature(x[k])
+
+            elif v.value == __class__.DataType.FLOAT.value:              
+              feature[k] = _float_feature(feature_constructor[k](x)) if feature_constructor is not None else _float_feature(x[k])
+
+            elif v.value == __class__.DataType.VAR_STRING_ARRAY.value:
+              feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
+
+            elif v.value == __class__.DataType.VAR_FLOAT_ARRAY.value:
+              feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
+
+            elif v.value == __class__.DataType.VAR_INT_ARRAY.value:
+              feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
 
             else:
-              if v.value == __class__.DataType.STRING.value:
-                feature[k] = _bytes_feature(feature_constructor[k](x)) if feature_constructor is not None else _bytes_feature(x[k])
+              print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
+              pass
+  
+        if shard_size is not None and i % shard_size == 0:
+          writer.close()
+          writer = tf.io.TFRecordWriter(f'{output_filename}.{i // shard_size}')
 
-              elif v.value == __class__.DataType.INT.value:
-                feature[k] = _int64_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64_feature(x[k])
+        tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
+        writer.write(tf_example.SerializeToString())
 
-              elif v.value == __class__.DataType.FLOAT.value:              
-                feature[k] = _float_feature(feature_constructor[k](x)) if feature_constructor is not None else _float_feature(x[k])
+        # if i % 100 == 0: print(".", end='')
+        # if i % 1000 == 0: print(i, end='')
+        # if i % 10000 == 0: print("")
 
-              elif v.value == __class__.DataType.VAR_STRING_ARRAY.value:
-                feature[k] = _byteslist_feature(feature_constructor[k](x)) if feature_constructor is not None else _byteslist_feature(x[k])
-
-              elif v.value == __class__.DataType.VAR_FLOAT_ARRAY.value:
-                feature[k] = _floatlist_feature(feature_constructor[k](x)) if feature_constructor is not None else _floatlist_feature(x[k])
-
-              elif v.value == __class__.DataType.VAR_INT_ARRAY.value:
-                feature[k] = _int64list_feature(feature_constructor[k](x)) if feature_constructor is not None else _int64list_feature(x[k])
-
-              else:
-                print(f"Serious Warning: failed to write data for {k} and {v}. Please debug.")
-                pass
+      except Exception as e:
+        print(e)  
+        print(traceback.format_exc())
+        bad_items.append(x)
     
-          tf_example = tf.train.Example(features=tf.train.Features(feature=feature))
-          writer.write(tf_example.SerializeToString())
-
-          # if i % 100 == 0: print(".", end='')
-          # if i % 1000 == 0: print(i, end='')
-          # if i % 10000 == 0: print("")
-
-        except Exception as e:
-          print(e)  
-          print(traceback.format_exc())
-          bad_items.append(x)
-
+    writer.close()
     return bad_items
 
   @staticmethod
@@ -194,15 +203,16 @@ class TFRecordHelper:
 
 
 class TFRecordHelperWriter(object):
-  def __init__(self, filename: str, features: Dict[str, Any]):
+  def __init__(self, filename: str, features: Dict[str, Any], shard_size: int = None):
     self.filename = filename
     self.features = features
+    self.shard_size = shard_size
     
   def __enter__(self):
     return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    #TODO: probably need to handle exception and close any resource
+    #TODO: probably need to handle exception and close any resources
     pass
 
   def write(self, dataset: tf.data.Dataset, feature_constructors: Optional[Dict[str, Any]] = None):
@@ -210,11 +220,13 @@ class TFRecordHelperWriter(object):
     TFRecordHelper.create(feature_desc = self.features,
                           feature_constructor = feature_constructors,
                           dataset = dataset,
-                          output_filename = self.filename
+                          output_filename = self.filename,
+                          shard_size = self.shard_size
                           )
 
 if __name__ == "__main__":
   #TODO: show example of how to use
+  import matplotlib.pyplot as plt
 
   file_ds = tf.data.Dataset.from_tensor_slices(
     {'filename': ['9_Ropewalk_Lane_Dartmouth_NS.jpg', '31_Saddlebrook_Way_NE_Calgary_AB.jpg'],
@@ -237,8 +249,8 @@ if __name__ == "__main__":
   parse_fn = TFRecordHelper.parse_fn(features)
 
   img_ds = tf.data.TFRecordDataset('my_test.tfrecords')\
-                .map(parse_fn, num_parallel_calls=AUTO)\
-                .map(lambda x: tf.image.decode_jpeg(x['image_raw'], channels=3), num_parallel_calls=AUTO)
+                .map(parse_fn, num_parallel_calls=tf.data.AUTOTUNE)\
+                .map(lambda x: tf.image.decode_jpeg(x['image_raw'], channels=3), num_parallel_calls=tf.data.AUTOTUNE)
 
 
   for img in img_ds:
