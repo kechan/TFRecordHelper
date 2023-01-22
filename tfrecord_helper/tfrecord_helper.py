@@ -6,7 +6,7 @@ from re import X
 import tensorflow as tf
 from pathlib import Path
 from tqdm import tqdm
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, List, Dict, Optional
 
 
 Path.ls = lambda x: list(x.iterdir())
@@ -56,7 +56,7 @@ class TFRecordHelper:
     VAR_INT_ARRAY = 9
 
   @staticmethod
-  def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords', shard_size: int = None):
+  def create(*, feature_desc, feature_constructor=None, dataset, output_filename='test.tfrecords', shard_size: int = None, mask_indice: List[int] = None):
     """
     Create a tfrecord from a tf.data.Dataset that is a dict as item.
 
@@ -67,7 +67,7 @@ class TFRecordHelper:
     dataset: a tf.data.Dataset that has dict as a single sample 
     output_filename: the output filename
     shard_size: the size of each shard. If None, then no sharding is done.
-
+    mask_indice: a list of indice to mask out. If None, then no masking is done.
     """
     # print(f'{feature_constructor is not None}')
     
@@ -76,6 +76,8 @@ class TFRecordHelper:
 
     writer = tf.io.TFRecordWriter(output_filename)
     for i, x in tqdm(enumerate(dataset)):
+
+      if mask_indice is not None and i in mask_indice: continue
 
       try:
         feature = {}
@@ -203,10 +205,23 @@ class TFRecordHelper:
 
 
 class TFRecordHelperWriter(object):
-  def __init__(self, filename: str, features: Dict[str, Any], shard_size: int = None):
+  def __init__(self, 
+    filename: str, 
+    features: Dict[str, Any], 
+    shard_size: Optional[int] = None, 
+    mask_indice: Optional[List[int]] = None):
+
+    '''
+    filename: output filename
+    features: a dictionary of [string: feature_type] pairs, where feature_type can be one of any TFRecordHelper.DataType.*
+    shard_size: if specified, will shard the output into multiple files of size shard_size
+    mask_indice: if specified, will skip writing record included in the mask indices. Useful for writing a subset of the dataset
+    '''
+
     self.filename = filename
     self.features = features
     self.shard_size = shard_size
+    self.mask_indice = mask_indice
     
   def __enter__(self):
     return self
@@ -221,7 +236,8 @@ class TFRecordHelperWriter(object):
                           feature_constructor = feature_constructors,
                           dataset = dataset,
                           output_filename = self.filename,
-                          shard_size = self.shard_size
+                          shard_size = self.shard_size,
+                          mask_indice = self.mask_indice
                           )
 
 if __name__ == "__main__":
